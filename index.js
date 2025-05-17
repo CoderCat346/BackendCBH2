@@ -2,6 +2,9 @@ const express = require('express');
 const fetch = require('node-fetch'); // Make sure you're using node-fetch@2
 const xml2js = require('xml2js');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
+const NodeCache = require('node-cache');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -63,29 +66,57 @@ app.get('/api/quran', async (req, res) => {
 });
 
 // DuckDuckGo Favicon service Route
+const FAVICON_DIR = path.join(__dirname, 'public', 'favicons');
+if (!fs.existsSync(FAVICON_DIR)) fs.mkdirSync(FAVICON_DIR, { recursive: true });
+
+// Memory cache with 1 hour TTL (time to live)
+const cache = new NodeCache({ stdTTL: 3600 });
+
 app.get('/favicon', async (req, res) => {
   const rawUrl = req.query.url;
-
-  if (!rawUrl) {
-    return res.status(400).send('Missing URL');
-  }
+  if (!rawUrl) return res.status(400).send('Missing url parameter');
 
   try {
-    const parsed = new URL(rawUrl);
-    const domain = parsed.hostname.replace(/^www\./, '');
+    const domain = new URL(rawUrl).hostname.replace(/^www\./, '');
+    
+    // 1. Check memory cache
+    let iconBuffer = cache.get(domain);
+    if (iconBuffer) {
+      res.setHeader('Content-Type', 'image/x-icon');
+      return res.send(iconBuffer);
+    }
+
+    // 2. Check disk cache
+    const filePath = path.join(FAVICON_DIR, `${domain}.ico`);
+    if (fs.existsSync(filePath)) {
+      iconBuffer = fs.readFileSync(filePath);
+      cache.set(domain, iconBuffer); // Store in memory cache for faster future access
+      res.setHeader('Content-Type', 'image/x-icon');
+      return res.send(iconBuffer);
+    }
+
+    // 3. Fetch from DuckDuckGo
     const ddgUrl = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
+    const response = await fetch(ddgUrl);
+    if (!response.ok) throw new Error(`Failed to fetch favicon for ${domain}`);
 
-    // Fetch favicon and stream it back
-    const iconRes = await fetch(ddgUrl);
-    if (!iconRes.ok) throw new Error('Favicon not found');
+    iconBuffer = await response.buffer();
 
-    res.set('Content-Type', 'image/x-icon');
-    iconRes.body.pipe(res);
-  } catch (err) {
-    console.error('Error fetching favicon:', err);
-    res.status(500).send('Failed to fetch favicon');
+    // Save to disk cache and memory cache
+    fs.writeFileSync(filePath, iconBuffer);
+    cache.set(domain, iconBuffer);
+
+    res.setHeader('Content-Type', 'image/x-icon');
+    res.send(iconBuffer);
+
+  } catch (error) {
+    console.error('Favicon error:', error.message);
+    res.status(500).send('Error fetching favicon');
   }
 });
+
+// Optional static serving (if needed elsewhere)
+app.use('/favicons', express.static(FAVICON_DIR));
 
 // RSS feed proxy route
 app.get('/api/rss', async (req, res) => {
