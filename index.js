@@ -95,6 +95,25 @@ app.get('/api/rss', async (req, res) => {
   }
 });
 
+// Proxy AQI widget script
+app.get('/proxy/aqi-widget.js', async (req, res) => {
+  try {
+    const response = await fetch('https://www.aqi.in/scripts/widget.min.js');
+    if (!response.ok) {
+      return res.status(500).send('Failed to fetch AQI script');
+    }
+    const js = await response.text();
+    res.set('Content-Type', 'application/javascript');
+    res.send(js);
+  } catch (err) {
+    res.status(500).send('Error fetching AQI script');
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server is listening on port ${PORT}`);
