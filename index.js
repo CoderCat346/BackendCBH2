@@ -62,6 +62,31 @@ app.get('/api/quran', async (req, res) => {
   }
 });
 
+// DuckDuckGo Favicon service Route
+app.get('/favicon', async (req, res) => {
+  const rawUrl = req.query.url;
+
+  if (!rawUrl) {
+    return res.status(400).send('Missing URL');
+  }
+
+  try {
+    const parsed = new URL(rawUrl);
+    const domain = parsed.hostname.replace(/^www\./, '');
+    const ddgUrl = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
+
+    // Fetch favicon and stream it back
+    const iconRes = await fetch(ddgUrl);
+    if (!iconRes.ok) throw new Error('Favicon not found');
+
+    res.set('Content-Type', 'image/x-icon');
+    iconRes.body.pipe(res);
+  } catch (err) {
+    console.error('Error fetching favicon:', err);
+    res.status(500).send('Failed to fetch favicon');
+  }
+});
+
 // RSS feed proxy route
 app.get('/api/rss', async (req, res) => {
   const url = req.query.url;
