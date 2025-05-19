@@ -147,9 +147,24 @@ app.get('/api/rss', async (req, res) => {
 });
 
 // Proxy weather widget script route
+// Cache object
+// Structure: { cityName: { data: {...}, timestamp: Date } }
+const WeatherCache = {};
+const CACHE_DURATION_MS = 60 * 60 * 1000; // 1 hour
+
 app.get('/api/weather', async (req, res) => {
-  const city = req.query.city;
+  const city = req.query.city?.toLowerCase();
   if (!city) return res.status(400).json({ error: 'City is required' });
+
+  // Check cache
+  const cached = WeatherCache[city];
+  const now = Date.now();
+
+  if (cached && (now - cached.timestamp < CACHE_DURATION_MS)) {
+    // Serve cached data
+    console.log(`Serving cached data for ${city}`);
+    return res.json(cached.data);
+  }
 
   try {
     const url = `https://goweather.herokuapp.com/weather/${encodeURIComponent(city)}`;
@@ -161,12 +176,23 @@ app.get('/api/weather', async (req, res) => {
 
     const data = await response.json();
 
-    res.json({
+    // Prepare response data
+    const result = {
       city,
       temperature: data.temperature,
       wind: data.wind,
       description: data.description,
-    });
+    };
+
+    // Update cache
+    WeatherCache[city] = {
+      data: result,
+      timestamp: now,
+    };
+
+    console.log(`Fetched and cached new data for ${city}`);
+
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: 'Unable to get weather data' });
   }
