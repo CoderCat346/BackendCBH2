@@ -146,18 +146,29 @@ app.get('/api/rss', async (req, res) => {
   }
 });
 
-// Proxy AQI widget script route
-app.get('/proxy/aqi-widget.js', async (req, res) => {
-  try {
-    const response = await fetch('https://www.aqi.in/scripts/widget.min.js');
-    if (!response.ok) return res.status(500).send('Failed to fetch AQI script');
+// Proxy weather widget script route
+app.get('/api/weather', async (req, res) => {
+  const city = req.query.city;
+  if (!city) return res.status(400).json({ error: 'City is required' });
 
-    const js = await response.text();
-    res.set('Content-Type', 'application/javascript');
-    res.send(js);
+  try {
+    const url = `https://goweather.herokuapp.com/weather/${encodeURIComponent(city)}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      return res.status(500).json({ error: 'Failed to fetch weather' });
+    }
+
+    const data = await response.json();
+
+    res.json({
+      city,
+      temperature: data.temperature,
+      wind: data.wind,
+      description: data.description,
+    });
   } catch (err) {
-    console.error('AQI script fetch error:', err.message);
-    res.status(500).send('Error fetching AQI script');
+    res.status(500).json({ error: 'Unable to get weather data' });
   }
 });
 
