@@ -147,53 +147,66 @@ app.get('/api/rss', async (req, res) => {
 });
 
 // Proxy weather widget script route
-// Cache object
-// Structure: { cityName: { data: {...}, timestamp: Date } }
+// In-memory cache to store weather results
+// Structure: { cityName: { data: {...}, timestamp: Date.now() } }
 const WeatherCache = {};
 const CACHE_DURATION_MS = 60 * 60 * 1000; // 1 hour
+const OPENWEATHER_API_KEY = 'd47f5ca5b91bf63f8b3abf8acdc13dcd';
 
+// Weather API endpoint
 app.get('/api/weather', async (req, res) => {
-  const city = req.query.city?.toLowerCase();
-  if (!city) return res.status(400).json({ error: 'City is required' });
+  const rawCity = req.query.city;
+  if (!rawCity) return res.status(400).json({ error: 'City is required' });
 
-  // Check cache
-  const cached = WeatherCache[city];
+  // Clean city: remove anything after colon, trim whitespace
+  const city = rawCity.split(':')[0].trim().toLowerCase();
+  // Get city from query parameter
+  if (!city) {
+    return res.status(400).json({ error: 'City is required' }); // Validate input
+  }
+
   const now = Date.now();
+  const cached = WeatherCache[city];
 
+  // Serve cached result if it's still valid
   if (cached && (now - cached.timestamp < CACHE_DURATION_MS)) {
-    // Serve cached data
     console.log(`Serving cached data for ${city}`);
     return res.json(cached.data);
   }
 
   try {
-    const url = `https://goweather.herokuapp.com/weather/${encodeURIComponent(city)}`;
+    // Build the OpenWeather API URL
+    const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${OPENWEATHER_API_KEY}&units=metric`;
+
+    // Fetch weather data from OpenWeather
     const response = await fetch(url);
 
+    // Handle non-OK responses
     if (!response.ok) {
-      return res.status(500).json({ error: 'Failed to fetch weather' });
+      return res.status(500).json({ error: 'Failed to fetch weather from OpenWeather' });
     }
 
+    // Parse JSON response
     const data = await response.json();
 
-    // Prepare response data
+    // Format the response data
     const result = {
-      city,
-      temperature: data.temperature,
-      wind: data.wind,
-      description: data.description,
+      city: data.name,                                // Properly capitalized city name
+      temperature: `${data.main.temp} °C`,            // Temperature in Celsius
+      wind: `${data.wind.speed} m/s`,                 // Wind speed in meters/sec
+      description: data.weather[0].description        // Weather description (e.g., "clear sky")
     };
 
-    // Update cache
+    // Store in cache
     WeatherCache[city] = {
       data: result,
       timestamp: now,
     };
 
     console.log(`Fetched and cached new data for ${city}`);
-
-    res.json(result);
+    res.json(result); // Send the result to the client
   } catch (err) {
+    console.error('Error fetching weather:', err);
     res.status(500).json({ error: 'Unable to get weather data' });
   }
 });
